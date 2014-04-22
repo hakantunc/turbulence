@@ -1,0 +1,26 @@
+{
+  "name": "webgme-turbulence",
+  "version": "0.1.0",
+  "description": "Turbulence plugin for webgme",
+  "engines": {
+    "node": ">=0.10.0"
+  },
+  "homepage": "http://github.com/webgme/webgme-turbulence",
+  "keywords": [
+      "webgme",
+      "pegasus"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "http://github.com/webgme/webgme-turbulence.git"
+  },
+  "bugs": {
+    "url": "http://github.com/webgme/webgme-turbulence/issues"
+  },
+  "license": "MIT",
+  "dependencies": {
+      "webgme": "https://github.com/webgme/webgme/tarball/master"
+  },
+  "devDependencies": {},
+  "main": "app.js"
+}

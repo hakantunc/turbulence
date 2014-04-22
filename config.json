@@ -1,0 +1,14 @@
+{
+    "debug": false,
+
+    "port": 8888,
+
+    "mongoip":"129.59.105.239",
+    "mongoport": 27017,
+    "mongodatabase": "multi",
+
+    "pluginBasePaths": ["./"],
+
+    "project":"Turbulence",
+    "autostart":true
+}
