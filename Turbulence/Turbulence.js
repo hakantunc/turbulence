@@ -76,13 +76,15 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
                     callback(err,self.result);
                 } else {
                     //now here starts the real plugin work
-                    self._execute();
+                    self._execute(function(){
+                        callback(null,self.result);
+                    });
                 }
             });
         }
     };
 
-    TurbulencePlugin.prototype._execute = function(){
+    TurbulencePlugin.prototype._execute = function(callback){
         var self = this,
             name_of_the_project =self.core.getAttribute(self.activeNode,'name'),
             childrenIds = self.core.getChildrenPaths(self.activeNode),
@@ -105,7 +107,7 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
                     inputs = {};
                 for(j=0;j<ports_of_proc.length;j++){
                     var port_base = self.core.getPath(self.core.getBase(self._nodeCache[ports_of_proc[j]]));
-                    if(port_base === self.getPath(self.META['Parameter_Input']) || port_base === self.getPath(self.META['Signal_Input'])){
+                    if(port_base === self.core.getPath(self.META['Parameter_Input']) || port_base === self.core.getPath(self.META['Signal_Input'])){
                         inputs[ports_of_proc[j]] = false;
                     }
                 }
@@ -118,17 +120,17 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
         }
 
         //TODO not yet 'transformed'
-        self._logger.warn('define primitives');
+        self.logger.warn('define primitives');
         var primitive_definitions = self._definePrimitives(primitives);
 
 
-        self._logger.warn('define buffers');
+        self.logger.warn('define buffers');
         var dynamic_definitions = self._defineDynamicPrimitives(dynamicPrimitives);
 
-        self._logger.warn('define procs');
+        self.logger.warn('define procs');
         var proc_definitions = self._defineProcs(procs, flows);
 
-        self._logger.warn('Script generation');
+        self.logger.warn('Script generation');
         if (proc_definitions === null) {
             return;
         }
@@ -164,12 +166,26 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
 
         full_script += post_script;
 
-        //TODO save the output
+        self._saveOutput(name_of_the_project+'.c',full_script,function(err){
+            if(err){
+                self.result.error = err;
+                self.result.success = false;
+            }
+
+            callback();
+        });
     };
 
-    TurbulencePlugin.prototype._saveOutput = function(fileName,stringFileContent){
+    TurbulencePlugin.prototype._saveOutput = function(fileName,stringFileContent,callback){
         //FIXME should put a proper usage here!!!
+        var self = this;
 
+        self.blobClient.addObject(fileName,stringFileContent,function(err,hash){
+            if(!err){
+                self.result.addArtifact(hash);
+            }
+            callback(err);
+        });
     };
     TurbulencePlugin.prototype._errorMessages = function(message){
         //TODO this should be proxied into the result as messages!!!
@@ -245,24 +261,23 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
         return definitions;
     };
 
-    //TODO transform
     TurbulencePlugin.prototype._defineProcs = function(procs, flows) {
-        var self = this;
-        var definitions = [];
+        var self = this,
+            definitions = [];
         while (!isAllProcessed(procs)) {
             console.log('begin');
             for (var j = 0; j < flows.length; j++) {
-                var flow_node = self._client.getNode(flows[j]);
-                var src = flow_node.getPointer('src')['to'];
-                var dst = flow_node.getPointer('dst')['to'];
-                var src_node = self._client.getNode(src);
-                var dst_node = self._client.getNode(dst);
+                var flow_node = self._nodeCache[flows[j]],
+                    src = self.core.getPointerPath(flow_node,'src'),
+                    dst = self.core.getPointerPath(flow_node,'dst'),
+                    src_node = self._nodeCache[src],
+                    dst_node = self._nodeCache[dst];
                 if (!doTheTypesMatch(src_node, dst_node)) {
                     errorTypesDoNotMatch(src_node, dst_node);
                     return null;
                 }
                 if (isSignalValid(src)) {
-                    var dest_proc = dst_node.getParentId();
+                    var dest_proc = self.core.getPath(self.core.getParent(dst_node));
                     procs[dest_proc]['inputs'][dst] = src;
                     procs[dest_proc]['processable'] = true;
                     for (var key in procs[dest_proc]['inputs']) {
@@ -302,18 +317,18 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
         }
 
         function doTheTypesMatch(src, dst) {
-            if (src.getAttribute('type') != dst.getAttribute('type'))
+            if (self.core.getAttribute(src,'type') !== self.core.getAttribute(dst,'type'))
                 return false;
             return true;
         }
 
         function isSignalValid(node_id) {
-            var node = self._client.getNode(node_id);
-            var base_id = node.getBaseId();
-            if (base_id == primitiveBaseId || base_id == dynamicPrimitiveBaseId)
+            var node = self._nodeCache[node_id];
+            var base_id = self.core.getPath(self.core.getBase(node));
+            if (base_id === self.core.getPath(self.META['Primitive_Parameter']) || base_id === self.core.getPath(self.META['Buffer']))
                 return true;
-            if (base_id == outputPortId) {
-                var parent_id = node.getParentId();
+            if (base_id === self.core.getPath(self.META['Output'])) {
+                var parent_id = self.core.getPath(self.core.getParent(node));
                 if (procs[parent_id]['processed'])
                     return true;
             }
@@ -330,34 +345,32 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
 
     };
 
-    //TODO transform
     TurbulencePlugin.prototype._defineProc = function(node_id, procs) {
-        var self = this;
-        var node = self._client.getNode(node_id);
-        var childrenIds = node.getChildrenIds();
-
-        var inputs = [];
-        var inputsRegular = [];
-        var orderingFlows = [];
-        var bufferFlows = [];
+        var self = this,
+            node = self._nodeCache[node_id],
+            childrenIds = self.core.getChildrenPaths(node),
+            inputs = [],
+            inputsRegular = [],
+            orderingFlows = [],
+            bufferFlows = [];
 
         childrenIds.forEach(function(child_id) {
-            var base_id = self._client.getNode(child_id).getBaseId();
-            if (base_id == domainMeta.META_TYPES['Parameter_Input'] || base_id == domainMeta.META_TYPES['Signal_Input']) {
+            var base_id = self.core.getPath(self.core.getBase(self._nodeCache[child_id]));
+            if (base_id === self.core.getPath(self.META['Parameter_Input']) || base_id === self.core.getPath(self.META['Signal_Input'])){
                 inputs[child_id] = 0;
                 inputsRegular.push(child_id);
-            } else if (base_id == orderingFlowId) {
+            } else if (base_id === self.core.getPath(self.META['Ordering_Flow'])) {
                 orderingFlows.push(child_id);
-            } else if (base_id == bufferFlowId) {
+            } else if (base_id === self.core.getPath(self.META['Buffer_Flow'])) {
                 bufferFlows.push(child_id);
             }
         });
 
-        var initialInput = [];
+        var initialInput = {};
         orderingFlows.forEach(function(flow) {
-            var flow_node = self._client.getNode(flow);
-            var src = flow_node.getPointer('src')['to'];
-            var dst = flow_node.getPointer('dst')['to'];
+            var flow_node = self._nodeCache[flow],
+                src = self.core.getPointerPath(flow_node,'src'),
+                dst = self.core.getPointerPath(flow_node,'dst');
             inputs[src] = dst;
             initialInput[dst] = 1;
         });
@@ -371,13 +384,13 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
 
         var isInputOutputConnected = [];
         bufferFlows.forEach(function(bf) {
-            var buf_flow_node = self._client.getNode(bf);
-            var src = buf_flow_node.getPointer('src')['to'];
+            var buf_flow_node = self._nodeCache[bf],
+                src = self.core.getPointerPath(buf_flow_node,'src');
             isInputOutputConnected[src] = true;
         });
 
-        var functionCall = node.getAttribute('name') + '(';
-        var curr = initInp;
+        var functionCall = self.core.getAttribute(node,'name') + '(',
+            curr = initInp;
         while(inputs[curr] != 0) {
             functionCall += getNameOfInput(procs[node_id]['inputs'][curr], isInputOutputConnected[curr]) + ',';
             curr = inputs[curr];
@@ -391,24 +404,24 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
         // this needs to run recursively for now
         //nd is the output port
         function getNameOfInput(nd, isOutputToo) {
-            var nn = self._client.getNode(nd);
+            var nn = self._nodeCache[nd];
             if (!nn) return 'something happened here';
-            if (nn.getBaseId() == primitiveBaseId || !nn.getAttribute('pointer') ) {
+            if (self.core.getPath(self.core.getBase(nn)) === self.core.getPath(self.META['Primitive_Parameter']) || !self.core.getAttribute(nn,'pointer') ) {
                 var param = isOutputToo ? '&' : '';
-                param += nn.getAttribute('name');
+                param += self.core.getAttribute(nn,'name');
                 return param;
-            } else if (nn.getBaseId() == dynamicPrimitiveBaseId) {
-                return nn.getAttribute('name');
-            } else if (nn.getBaseId() == outputPortId) {
-                var parent_id = nn.getParentId();
-                var parent_node = self._client.getNode(parent_id);
-                var childrenIds = parent_node.getChildrenIds();
+            } else if (self.core.getPath(self.core.getBase(nn)) === self.core.getPath(self.META['Buffer'])) {
+                return self.core.getAttribute(nn,'name');
+            } else if (self.core.getPath(self.core.getBase(nn)) == self.core.getPath(self.META['Output'])) {
+                var parent_id = self.core.getPath(self.core.getParent(nn));
+                var parent_node = self.core.getParent(nn);
+                var childrenIds = self.core.getChildrenPaths(parent_node);
                 for (var i = 0; i < childrenIds.length; i++) {
-                    var curr_node = self._client.getNode(childrenIds[i]);
-                    var curr_node_base_id = curr_node.getBaseId()
-                    if (curr_node_base_id == bufferFlowId) {
+                    var curr_node = self._nodeCache[childrenIds[i]];
+                    var curr_node_base_id = self.core.getPath(self.core.getBase(curr_node));
+                    if (curr_node_base_id === self.core.getPath(self.META['Buffer_Flow'])) {
                         // var np = self._client.getNode(curr_node_base_id);
-                        var src_input = curr_node.getPointer('src')['to'];
+                        var src_input = self.core.getPointerPath(curr_node,'src');
                         return getNameOfInput(procs[parent_id]['inputs'][src_input], isOutputToo);
                     }
                 }
