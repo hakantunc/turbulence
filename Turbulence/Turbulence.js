@@ -66,13 +66,13 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
         //checkings
         if(!self.activeNode || !self._isTypeOf(self.activeNode,self.META['Workflow'])){
             //maybe put a proper message in the result
-            self.result.success = false;
+            self.result.setSuccess(false);
             callback(null,self.result);
         } else {
             //we should load the nodes
             self._loadNodes(function(err){
                 if(err){
-                    self.result.success = false;
+                    self.result.setSuccess(false);
                     callback(err,self.result);
                 } else {
                     //now here starts the real plugin work
@@ -169,7 +169,9 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
         self._saveOutput(name_of_the_project+'.c',full_script,function(err){
             if(err){
                 self.result.error = err;
-                self.result.success = false;
+                self.result.setSuccess(false);
+            } else {
+                self.result.setSuccess(true);
             }
 
             callback();
@@ -177,14 +179,30 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
     };
 
     TurbulencePlugin.prototype._saveOutput = function(fileName,stringFileContent,callback){
-        //FIXME should put a proper usage here!!!
-        var self = this;
+        var self = this,
+            artifact = self.blobClient.createArtifact(self.projectName+"_Turbulence_Output");
 
-        self.blobClient.addObject(fileName,stringFileContent,function(err,hash){
-            if(!err){
-                self.result.addArtifact(hash);
+        artifact.addFile(fileName,stringFileContent,function(err){
+            if(err){
+                callback(err);
+            } else {
+                self.blobClient.saveAllArtifacts(function(err, hashes) {
+                    if (err) {
+                        callback(err);
+                    } else {
+                        self.logger.info('Artifacts are saved here:');
+                        self.logger.info(hashes);
+
+                        // result add hashes
+                        for (var j = 0; j < hashes.length; j += 1) {
+                            self.result.addArtifact(hashes[j]);
+                        }
+
+                        self.result.setSuccess(true);
+                        callback(null);
+                    }
+                });
             }
-            callback(err);
         });
     };
     TurbulencePlugin.prototype._errorMessages = function(message){
