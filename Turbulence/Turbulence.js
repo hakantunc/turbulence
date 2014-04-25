@@ -298,17 +298,9 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
   };
 
   TurbulencePlugin.prototype._errorMessages = function(message){
-    //TODO this should be proxied into the result as messages!!!
-    this.logger.info(message);
+    //TODO the erroneous node should be send to the function
     var self = this;
-    var artifact = self.blobClient.createArtifact(message);
-    artifact.addFile(message,message,function(err) {
-      self.blobClient.saveAllArtifacts(function(err, hashes) {
-        for (var j = 0; j < hashes.length; j += 1) {
-          self.result.addArtifact(hashes[j]);
-        }
-      });
-    });
+    self.createMessage(self.activeNode,message);
   };
 
 
@@ -325,8 +317,6 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
           dst_node = self._nodeCache[dst];
         if (!doTheTypesMatch(src_node, dst_node)) {
           errorTypesDoNotMatch(src_node, dst_node);
-          self.result.setSuccess(false);
-          callback(null,self.result);
           return null;
         }
         if (isSignalValid(src)) {
