@@ -66,6 +66,7 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
     //checkings
     if(!self.activeNode || !self._isTypeOf(self.activeNode,self.META['Workflow'])){
       //maybe put a proper message in the result
+      self._errorMessages('The current worksheet is not valid');
       self.result.setSuccess(false);
       callback(null,self.result);
     } else {
@@ -299,6 +300,15 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
   TurbulencePlugin.prototype._errorMessages = function(message){
     //TODO this should be proxied into the result as messages!!!
     this.logger.info(message);
+    var self = this;
+    var artifact = self.blobClient.createArtifact(message);
+    artifact.addFile(message,message,function(err) {
+      self.blobClient.saveAllArtifacts(function(err, hashes) {
+        for (var j = 0; j < hashes.length; j += 1) {
+          self.result.addArtifact(hashes[j]);
+        }
+      });
+    });
   };
 
 
