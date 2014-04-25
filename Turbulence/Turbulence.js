@@ -325,6 +325,8 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
           dst_node = self._nodeCache[dst];
         if (!doTheTypesMatch(src_node, dst_node)) {
           errorTypesDoNotMatch(src_node, dst_node);
+          self.result.setSuccess(false);
+          callback(null,self.result);
           return null;
         }
         if (isSignalValid(src)) {
