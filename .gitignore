@@ -6,3 +6,6 @@ server.log
 
 # used npm modules
 node_modules
+
+config.json
+blob-local-storage

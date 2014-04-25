@@ -3,7 +3,7 @@
 
     "port": 8888,
 
-    "mongoip":"129.59.105.239",
+    "mongoip":"localhost",
     "mongoport": 27017,
     "mongodatabase": "multi",
 
