@@ -359,11 +359,12 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
 
     function errorTypesDoNotMatch(src_node, dst_node) {
       self._errorMessages('Signal flow types do not match: '
-          + src_node.getAttribute('name') + '('
-          + src_node.getAttribute('type') + ')'
+          + self.core.getAttribute(src_node,'name') + '('
+          + self.core.getAttribute(src_node,'type') + ')'
           + ' -> '
-          + dst_node.getAttribute('name') + '('
-          + dst_node.getAttribute('type') + ')'
+          + self.core.getAttribute(dst_node,'name') + '('
+          + self.core.getAttribute(dst_node,'type') + ')'
+
       );
     }
 
