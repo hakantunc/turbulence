@@ -306,10 +306,25 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
 
 
   TurbulencePlugin.prototype._defineProcs = function(procs, flows) {
-    var self = this,
-      definitions = [];
+    var self = this;
+    var definitions = [];
+
+    //check procs that do not have any input ports
+    for (var key in procs) {
+      var childrenIds = self.core.getChildrenPaths(self._nodeCache[key]);
+      procs[key]['processable'] = true;
+      for (var i = childrenIds.length - 1; i >= 0; i--) {
+        var child = self._nodeCache[childrenIds[i]];
+        var base_id = self.core.getPath(self.core.getBase(child));
+        var comp = self.core.getPath(self.META['Parameter_Input']);
+        if (base_id == self.core.getPath(self.META['Parameter_Input'])) {
+          procs[key]['processable'] = false;
+        }
+      }
+    }
+
+    //go over for all procs
     while (!isAllProcessed(procs)) {
-      console.log('begin');
       for (var j = 0; j < flows.length; j++) {
         var flow_node = self._nodeCache[flows[j]],
           src = self.core.getPointerPath(flow_node,'src'),
@@ -338,7 +353,9 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
           //printf
           // var key_node = self._client.getNode(key);
           // console.log('being processed ' + key_node.getAttribute('name'));
-          definitions.push(self._defineProc(key, procs));
+          var proc_definition = self._defineProc(key, procs);
+          if (proc_definition == null) return null;
+          definitions.push(proc_definition);
 
           procs[key]['processed'] = true;
           isProcessed = true;
@@ -346,6 +363,11 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
       }
       if (!isProcessed)
         break;
+    }
+
+    if (Object.keys(procs).length != definitions.length) {
+      self._errorMessages("There's a problem with a proc definition");
+      return null;
     }
 
     return definitions;
@@ -415,6 +437,9 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
       }
     });
 
+    if (inputsRegular.length == 0 )
+      return self.core.getAttribute(node,'name') + '();';
+
     var initialInput = {};
     orderingFlows.forEach(function(flow) {
       var flow_node = self._nodeCache[flow],
@@ -440,11 +465,25 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
 
     var functionCall = self.core.getAttribute(node,'name') + '(',
       curr = initInp;
+    var counter = 0;
     while(inputs[curr] != 0) {
-      functionCall += getNameOfInput(procs[node_id]['inputs'][curr], isInputOutputConnected[curr]) + ',';
+      var nameOfInput = getNameOfInput(procs[node_id]['inputs'][curr], isInputOutputConnected[curr]);
+      if (nameOfInput == null) return null;
+      functionCall += nameOfInput + ',';
       curr = inputs[curr];
+      counter++;
     }
-    functionCall += getNameOfInput(procs[node_id]['inputs'][curr], isInputOutputConnected[curr]) + ');';
+    var nameOfInput = getNameOfInput(procs[node_id]['inputs'][curr], isInputOutputConnected[curr]);
+    if (nameOfInput == null) {
+      return null;
+    }
+    functionCall += nameOfInput + ');';
+    counter++;
+
+    if(counter != inputsRegular.length || inputsRegular.length != (orderingFlows.length+1)) {
+      self._errorMessages('Ordering Flow error in ' + self.core.getAttribute(node, 'name'));
+      return null;
+    }
 
     // put in a datastructure
     return functionCall;
@@ -454,7 +493,12 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
     //nd is the output port
     function getNameOfInput(nd, isOutputToo) {
       var nn = self._nodeCache[nd];
-      if (!nn) return 'something happened here';
+      if (!nn) {
+        self._errorMessages('Problem with proc definition');
+        self.result.setSuccess(false);
+        // callback(null,self.result);
+        return null;
+      }
       if (self.core.getPath(self.core.getBase(nn)) === self.core.getPath(self.META['Primitive_Parameter']) || !self.core.getAttribute(nn,'pointer') ) {
         var param = isOutputToo ? '&' : '';
         param += self.core.getAttribute(nn,'name');
