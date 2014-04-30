@@ -317,9 +317,14 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
         var child = self._nodeCache[childrenIds[i]];
         var base_id = self.core.getPath(self.core.getBase(child));
         var comp = self.core.getPath(self.META['Parameter_Input']);
-        if (base_id == self.core.getPath(self.META['Parameter_Input'])) {
+        if (base_id == comp) {
           procs[key]['processable'] = false;
         }
+        comp = self.core.getPath(self.META['Signal_Input']);
+        if (base_id == comp) {
+          procs[key]['processable'] = false;
+        }
+
       }
     }
 
@@ -331,8 +336,12 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
           dst = self.core.getPointerPath(flow_node,'dst'),
           src_node = self._nodeCache[src],
           dst_node = self._nodeCache[dst];
-        if (!doTheTypesMatch(src_node, dst_node)) {
-          errorTypesDoNotMatch(src_node, dst_node);
+        if (!doTheTypesMatch(src_node, dst_node, 'type')) {
+          errorTypesDoNotMatch(src_node, dst_node, 'type');
+          return null;
+        }
+        if(!doTheTypesMatch(src_node, dst_node, 'pointer')) {
+          errorTypesDoNotMatch(src_node, dst_node, 'pointer');
           return null;
         }
         if (isSignalValid(src)) {
@@ -372,23 +381,23 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
 
     return definitions;
 
-    function errorTypesDoNotMatch(src_node, dst_node) {
+    function errorTypesDoNotMatch(src_node, dst_node, attr) {
       var src_parent = self.core.getParent(src_node);
       var dst_parent = self.core.getParent(dst_node);
-      self._errorMessages('Flow types do not match: '
+      self._errorMessages('Flow ' + attr +' do not match: '
           + '[' + self.core.getAttribute(src_parent, 'name') + ']:'
           + self.core.getAttribute(src_node,'name') + '('
-          + self.core.getAttribute(src_node,'type') + ')'
+          + self.core.getAttribute(src_node, attr) + ')'
           + ' -> '
           + '[' + self.core.getAttribute(dst_parent, 'name') + ']:'
           + self.core.getAttribute(dst_node,'name') + '('
-          + self.core.getAttribute(dst_node,'type') + ')'
+          + self.core.getAttribute(dst_node, attr) + ')'
 
       );
     }
 
-    function doTheTypesMatch(src, dst) {
-      if (self.core.getAttribute(src,'type') !== self.core.getAttribute(dst,'type'))
+    function doTheTypesMatch(src, dst, attr) {
+      if (self.core.getAttribute(src, attr) !== self.core.getAttribute(dst, attr))
         return false;
       return true;
     }
@@ -463,6 +472,26 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
       isInputOutputConnected[src] = true;
     });
 
+    //check if the type and pointer values of buffer flow src & dst match
+    for (var i = bufferFlows.length - 1; i >= 0; i--) {
+      var src = self.core.getPointerPath(self._nodeCache[bufferFlows[i]], 'src');
+      var dst = self.core.getPointerPath(self._nodeCache[bufferFlows[i]], 'dst');
+      var sn = self._nodeCache[src];
+      var dn = self._nodeCache[dst];
+
+      if (!doTheTypesMatch(sn, dn, 'type') || !doTheTypesMatch(sn, dn, 'pointer')) {
+        var name = self.core.getAttribute(node, 'name');
+        self._errorMessages('Buffer flow type or pointer do not match on ' + name);
+        return null;
+      }
+    };
+
+    function doTheTypesMatch(src, dst, attr) {
+      if (self.core.getAttribute(src, attr) !== self.core.getAttribute(dst, attr))
+        return false;
+      return true;
+    }
+
     var functionCall = self.core.getAttribute(node,'name') + '(',
       curr = initInp;
     var counter = 0;
@@ -499,12 +528,17 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
         // callback(null,self.result);
         return null;
       }
-      if (self.core.getPath(self.core.getBase(nn)) === self.core.getPath(self.META['Primitive_Parameter']) || !self.core.getAttribute(nn,'pointer') ) {
+      if (self.core.getPath(self.core.getBase(nn)) === self.core.getPath(self.META['Primitive_Parameter'])  ) { //|| !self.core.getAttribute(nn,'pointer')
         var param = isOutputToo ? '&' : '';
         param += self.core.getAttribute(nn,'name');
         return param;
       } else if (self.core.getPath(self.core.getBase(nn)) === self.core.getPath(self.META['Buffer'])) {
-        return self.core.getAttribute(nn,'name');
+        var param = '';
+        if (!self.core.getAttribute(nn,'pointer')) {
+          param += isOutputToo ? '&' : '';  
+        }
+        param += self.core.getAttribute(nn,'name');
+        return param;
       } else if (self.core.getPath(self.core.getBase(nn)) == self.core.getPath(self.META['Output'])) {
         var parent_id = self.core.getPath(self.core.getParent(nn));
         var parent_node = self.core.getParent(nn);
@@ -519,7 +553,8 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
           }
         }
       }
-      return "something's happening here";
+      self._errorMessages("There's a problem with a proc definition");
+      return null;
     }
 
 
