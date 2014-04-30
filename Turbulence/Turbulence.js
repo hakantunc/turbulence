@@ -298,10 +298,10 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
     });
   };
 
-  TurbulencePlugin.prototype._errorMessages = function(message){
-    //TODO the erroneous node should be send to the function
-    var self = this;
-    self.createMessage(self.activeNode,message);
+  TurbulencePlugin.prototype._errorMessages = function(message,targetNode){
+      var self = this;
+      targetNode = targetNode || self.activeNode;
+      self.createMessage(targetNode,message);
   };
 
 
@@ -382,6 +382,7 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
     return definitions;
 
     function errorTypesDoNotMatch(src_node, dst_node, attr) {
+        //TODO when multiple pointing message will be available change it!!
       var src_parent = self.core.getParent(src_node);
       var dst_parent = self.core.getParent(dst_node);
       self._errorMessages('Flow ' + attr +' do not match: '
@@ -392,7 +393,6 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
           + '[' + self.core.getAttribute(dst_parent, 'name') + ']:'
           + self.core.getAttribute(dst_node,'name') + '('
           + self.core.getAttribute(dst_node, attr) + ')'
-
       );
     }
 
@@ -510,7 +510,7 @@ define(['plugin/PluginConfig','plugin/PluginBase','util/assert'],function(Plugin
     counter++;
 
     if(counter != inputsRegular.length || inputsRegular.length != (orderingFlows.length+1)) {
-      self._errorMessages('Ordering Flow error in ' + self.core.getAttribute(node, 'name'));
+      self._errorMessages('Ordering Flow error in ' + self.core.getAttribute(node, 'name'),node);
       return null;
     }
 
